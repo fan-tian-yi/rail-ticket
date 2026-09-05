@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Data
@@ -19,4 +20,6 @@ public class TrainStation {
     private LocalTime arriveTime;
     private LocalTime departTime;
     private BigDecimal priceCum;
+    private LocalDateTime createTime;
+    private LocalDateTime updateTime;
 }
