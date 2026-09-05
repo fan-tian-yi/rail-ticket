@@ -67,7 +67,7 @@ mvn spring-boot:run
 |---|---|
 | `t_station` | 站点（含电报码、经纬度） |
 | `t_train` | 车次模板（无发车日期，每日复用时刻表） |
-| `TrainStation` | 车次经停（时刻表 + 区间票价基准）★核心表 |
+| `TrainStationDO` | 车次经停（时刻表 + 区间票价基准）★核心表 |
 | `t_user` | 用户（手机号登录） |
 | `t_passenger` | 乘客（一人多张身份证） |
 | `t_order` | 订单（订单快照冻结业务事实） |

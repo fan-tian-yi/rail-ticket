@@ -2,23 +2,24 @@ package com.tianyi.railticket.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Data
-@TableName("t_train")
-public class Train {
+@TableName("t_train_station")
+public class TrainStationDO {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
-    private String trainNo;
-    private Integer trainType;
-    private Integer status;
-    private String seatConfig;
-    @TableLogic
-    private Integer deleted;
+    private Long trainId;
+    private Long stationId;
+    private Integer seq;
+    private LocalTime arriveTime;
+    private LocalTime departTime;
+    private BigDecimal priceCum;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

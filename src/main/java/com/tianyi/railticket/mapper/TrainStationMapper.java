@@ -1,8 +1,8 @@
 package com.tianyi.railticket.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.tianyi.railticket.dto.TrainRouteDO;
-import com.tianyi.railticket.entity.TrainStation;
+import com.tianyi.railticket.entity.model.TrainRoute;
+import com.tianyi.railticket.entity.TrainStationDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -10,7 +10,7 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 
 @Mapper
-public interface TrainStationMapper extends BaseMapper<TrainStation> {
+public interface TrainStationMapper extends BaseMapper<TrainStationDO> {
     @Select(
             """
             SELECT A.train_id,
@@ -24,6 +24,6 @@ public interface TrainStationMapper extends BaseMapper<TrainStation> {
             WHERE A.station_id = #{fromStationId}
             AND B.station_id = #{toStationId}
            """)
-    List<TrainRouteDO> selectRoutes(@Param("fromStationId") Long fromStationId,
-                                    @Param("toStationId") Long toStationId);
+    List<TrainRoute> selectRoutes(@Param("fromStationId") Long fromStationId,
+                                  @Param("toStationId") Long toStationId);
 }

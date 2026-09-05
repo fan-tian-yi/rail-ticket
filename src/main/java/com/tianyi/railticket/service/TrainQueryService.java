@@ -1,9 +1,9 @@
 package com.tianyi.railticket.service;
 
 import com.tianyi.railticket.dto.TrainQueryDTO;
-import com.tianyi.railticket.dto.TrainRouteDO;
-import com.tianyi.railticket.entity.Station;
-import com.tianyi.railticket.entity.Train;
+import com.tianyi.railticket.entity.model.TrainRoute;
+import com.tianyi.railticket.entity.StationDO;
+import com.tianyi.railticket.entity.TrainDO;
 import com.tianyi.railticket.mapper.StationMapper;
 import com.tianyi.railticket.mapper.TrainMapper;
 import com.tianyi.railticket.mapper.TrainStationMapper;
@@ -23,7 +23,7 @@ public class TrainQueryService {
     private final StationMapper stationMapper;
 
     public List<TrainItemVO> query(TrainQueryDTO trainQueryDTO){
-        List<TrainRouteDO> routes  = trainStationMapper.selectRoutes(
+        List<TrainRoute> routes  = trainStationMapper.selectRoutes(
                 trainQueryDTO.getFromStationId(), trainQueryDTO.getToStationId());
         if(routes.isEmpty()){
             return List.of();
@@ -31,12 +31,12 @@ public class TrainQueryService {
         LocalDate date = LocalDate.parse(trainQueryDTO.getTrainDate());
 
         // 站名只查一次，提循环外（两个固定值）
-        Station from = stationMapper.selectById(trainQueryDTO.getFromStationId());
-        Station to = stationMapper.selectById(trainQueryDTO.getToStationId());
+        StationDO from = stationMapper.selectById(trainQueryDTO.getFromStationId());
+        StationDO to = stationMapper.selectById(trainQueryDTO.getToStationId());
 
         List<TrainItemVO> result = new ArrayList<>();
-        for (TrainRouteDO r : routes) {
-            Train train = trainMapper.selectById(r.getTrainId());
+        for (TrainRoute r : routes) {
+            TrainDO train = trainMapper.selectById(r.getTrainId());
 
             TrainItemVO vo = new TrainItemVO();
             vo.setTrainId(train.getId());

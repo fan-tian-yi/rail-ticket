@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 
 @Data
 @TableName("t_station")
-public class Station {
+public class StationDO {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
     private String name;

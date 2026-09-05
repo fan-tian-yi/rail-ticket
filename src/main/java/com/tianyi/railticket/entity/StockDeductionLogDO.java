@@ -5,21 +5,19 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 
 @Data
-@TableName("t_train_station")
-public class TrainStation {
+@TableName("t_stock_deduction_log")
+public class StockDeductionLogDO {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
+    private String orderNo;
     private Long trainId;
-    private Long stationId;
-    private Integer seq;
-    private LocalTime arriveTime;
-    private LocalTime departTime;
-    private BigDecimal priceCum;
+    private LocalDate trainDate;
+    private Integer seatType;
+    private String segments;
+    private Integer delta;
     private LocalDateTime createTime;
-    private LocalDateTime updateTime;
 }
