@@ -65,8 +65,7 @@ public class InventoryService {
         int created = 0;
 
         // 查出所有上架的车次
-        List<TrainDO> trains = trainMapper.selectList(
-                new LambdaQueryWrapper<TrainDO>()
+        List<TrainDO> trains = trainMapper.selectList(new LambdaQueryWrapper<TrainDO>()
                         .eq(TrainDO::getStatus, STATUS_ONLINE));
         if (trains.isEmpty()) {
             log.warn("没有上架的车次（status={}），预热跳过", STATUS_ONLINE);
