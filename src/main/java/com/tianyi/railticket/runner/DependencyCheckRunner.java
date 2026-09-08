@@ -45,20 +45,12 @@ public class DependencyCheckRunner implements ApplicationRunner {
 
     private void checkRedis() {
         try {
-            String pong = stringRedisTemplate.execute(
-                    (RedisCallback<String>) RedisConnection::ping);
-            Properties info = stringRedisTemplate.execute(
-                    (RedisCallback<Properties>) conn -> conn.serverCommands().info("server"));
-            Long keyCount = stringRedisTemplate.execute(
-                    (RedisCallback<Long>) RedisConnection::dbSize);
-
-            log.info("Redis 自检通过 | ping={} | 版本={} | 当前 key 数={}",
-                    pong,
-                    info == null ? "unknown" : info.getProperty("redis_version"),
-                    keyCount);
+            String pong = stringRedisTemplate.execute(RedisConnection::ping);
+            log.info("Redis 自检通过 | ping={}", pong);
         } catch (Exception e) {
-            // Redis 是缓存层：挂了只是库存不可用，站站查询还能服务
-            log.error("Redis 连接失败，余票查询与下单将不可用", e);
+            // Redis 是库存唯一存储，不可用则无法售票 → 与 MySQL 同级，终止启动
+            throw new IllegalStateException("Redis 连接失败，库存功能不可用，应用终止启动", e);
         }
     }
+
 }
