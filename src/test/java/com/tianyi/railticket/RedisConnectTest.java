@@ -16,4 +16,14 @@ public class RedisConnectTest {
         String value = stringRedisTemplate.opsForValue().get("test");
         System.out.println(value);
     }
+
+    @Test
+    // 删除Redis中当前库所有数据
+    public void testClearRedis(){
+        stringRedisTemplate.getConnectionFactory()
+                .getConnection()
+                .serverCommands()
+                .flushDb();
+        System.out.println("已删除当前库");
+    }
 }

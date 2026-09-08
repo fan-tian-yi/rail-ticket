@@ -26,4 +26,7 @@ public interface TrainStationMapper extends BaseMapper<TrainStationDO> {
            """)
     List<TrainRoute> selectRoutes(@Param("fromStationId") Long fromStationId,
                                   @Param("toStationId") Long toStationId);
+
+    @Select("SELECT seq FROM t_train_station WHERE train_id = #{trainId} AND station_id = #{stationId}")
+    Integer selectSeq(@Param("trainId") Long trainId, @Param("stationId") Long stationId);
 }
