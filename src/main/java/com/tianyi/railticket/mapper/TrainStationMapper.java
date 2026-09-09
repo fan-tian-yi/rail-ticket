@@ -1,6 +1,7 @@
 package com.tianyi.railticket.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.tianyi.railticket.entity.model.SegmentInfo;
 import com.tianyi.railticket.entity.model.TrainRoute;
 import com.tianyi.railticket.entity.TrainStationDO;
 import org.apache.ibatis.annotations.Mapper;
@@ -29,4 +30,20 @@ public interface TrainStationMapper extends BaseMapper<TrainStationDO> {
 
     @Select("SELECT seq FROM t_train_station WHERE train_id = #{trainId} AND station_id = #{stationId}")
     Integer selectSeq(@Param("trainId") Long trainId, @Param("stationId") Long stationId);
+
+    @Select("""
+        SELECT A.seq                     AS fromSeq,
+               B.seq                     AS toSeq,
+               A.depart_time             AS depart,
+               B.arrive_time             AS arrive,
+               B.price_cum - A.price_cum AS price
+        FROM t_train_station A
+        JOIN t_train_station B ON A.train_id = B.train_id
+        WHERE A.train_id   = #{trainId}
+          AND A.station_id = #{fromStationId}
+          AND B.station_id = #{toStationId}
+        """)
+    SegmentInfo selectSegment(@Param("trainId") Long trainId,
+                              @Param("fromStationId") Long fromStationId,
+                              @Param("toStationId") Long toStationId);
 }

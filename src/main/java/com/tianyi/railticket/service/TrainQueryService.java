@@ -22,13 +22,15 @@ public class TrainQueryService {
     private final TrainMapper trainMapper;
     private final StationMapper stationMapper;
 
-    public List<TrainItemVO> query(TrainQueryDTO trainQueryDTO){
-        List<TrainRoute> routes  = trainStationMapper.selectRoutes(
+    /** 查两站之间的车次列表（含票价、时刻） */
+    public List<TrainItemVO> query(TrainQueryDTO trainQueryDTO) {
+        List<TrainRoute> routes = trainStationMapper.selectRoutes(
                 trainQueryDTO.getFromStationId(), trainQueryDTO.getToStationId());
-        if(routes.isEmpty()){
+        if (routes.isEmpty()) {
             return List.of();
         }
-        LocalDate date = LocalDate.parse(trainQueryDTO.getTrainDate());
+        // trainDate 已在 DTO 层由 Spring 转成 LocalDate（格式错/日期不存在/为空 → 入口 40000）
+        LocalDate date = trainQueryDTO.getTrainDate();
 
         // 站名只查一次，提循环外（两个固定值）
         StationDO from = stationMapper.selectById(trainQueryDTO.getFromStationId());

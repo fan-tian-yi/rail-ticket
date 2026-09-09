@@ -1,48 +1,65 @@
 package com.tianyi.railticket.common;
 
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
+import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-@Slf4j                      // Lombok 注入 log 对象（需要 pom 里有 lombok，已加）
-@RestControllerAdvice       // = @ControllerAdvice + @ResponseBody：返回值走 Jackson 变 JSON
+import java.time.LocalDate;
+
+@Slf4j
+@RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    /** 业务异常：Service 抛的 BizException，code/message 原样透出 */
+    /** 业务异常 */
     @ExceptionHandler(BizException.class)
     public Result<Void> handleBiz(BizException e) {
         log.warn("业务异常: code={}, msg={}", e.getCode(), e.getMessage());
         return Result.fail(e.getCode(), e.getMessage());
     }
 
-    /** 参数校验失败：GET+@Valid 抛 BindException（MethodArgumentNotValidException 是它子类，一并接住） */
+    /** 参数校验失败（GET/POST 的 @Valid + 类型绑定失败） */
     @ExceptionHandler(BindException.class)
     public Result<Void> handleBind(BindException e) {
-        String msg = e.getBindingResult().getFieldErrors().stream()
-                .map(err -> err.getField() + " " + err.getDefaultMessage())
-                .findFirst()                        // 只取第一条错误，别把一坨都塞给前端
-                .orElse("参数错误");
-        return Result.fail(400, msg);
+        ObjectError err = e.getBindingResult().getAllErrors().get(0);
+        // typeMismatch 是类型转换失败，默认英文，单独给中文；其余用注解里的中文
+        String msg = err.getCode() != null && err.getCode().startsWith("typeMismatch")
+                ? "参数格式不正确"
+                : err.getDefaultMessage();
+        log.warn("参数校验失败: {}", msg);
+        return Result.fail(ErrorCode.PARAM_ERROR.getCode(), msg);
     }
 
+    /** 请求体解析失败（POST @RequestBody，Jackson 抛） */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public Result<Void> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
+        log.warn("请求体解析失败: {}", e.getMessage());
+        return Result.fail(ErrorCode.PARAM_ERROR.getCode(), resolveBodyError(e));
+    }
+
+    /** 接口不存在 */
     @ExceptionHandler(NoResourceFoundException.class)
     public Result<Void> handle404(NoResourceFoundException e) {
         return Result.fail(404, "接口不存在: " + e.getResourcePath());
     }
 
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public Result<Void> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
-        log.warn("请求体解析失败: {}", e.getMessage());
-        return Result.fail(400, "请求体格式错误或为空");
-    }
-
-    /** 兜底：所有没被上面两条接住的异常 */
+    /** 兜底 */
     @ExceptionHandler(Exception.class)
     public Result<Void> handleOther(Exception e) {
-        log.error("系统异常", e);                   // 完整堆栈进日志——给自己人查问题用
-        return Result.fail(500, "系统繁忙，请稍后重试"); // 模糊话术给前端——防内部信息泄露
+        log.error("系统异常", e);
+        return Result.fail(500, "系统繁忙，请稍后重试");
+    }
+
+    /** 反序列化根因 → 人话 */
+    private String resolveBodyError(HttpMessageNotReadableException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof InvalidFormatException ife && ife.getTargetType() == LocalDate.class) {
+            return "日期格式不正确，应为 yyyy-MM-dd";
+        }
+        return "请求体格式错误或为空";
     }
 }

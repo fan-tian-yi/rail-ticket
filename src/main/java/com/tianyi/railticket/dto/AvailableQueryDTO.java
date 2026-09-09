@@ -9,7 +9,7 @@ import lombok.Data;
 import java.time.LocalDate;
 
 @Data
-public class OrderCreateDTO {
+public class AvailableQueryDTO {
 
     @NotNull(message = "车次ID不能为空")
     @Positive(message = "车次ID不合法")
@@ -29,8 +29,4 @@ public class OrderCreateDTO {
     @NotNull(message = "席别不能为空")
     @InEnum(enumClass = SeatType.class, message = "席别不存在")
     private Integer seatType;
-
-    @NotNull(message = "乘车人不能为空")
-    @Positive(message = "乘车人不合法")
-    private Long passengerId;
 }
