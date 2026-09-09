@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 @Getter
 @AllArgsConstructor
@@ -35,6 +36,11 @@ public enum SeatType implements CodeEnum {
             throw new BizException(ErrorCode.SEAT_TYPE_INVALID);
         }
         return seatType;
+    }
+
+    /** 基准价 × 本席别倍率（保留 2 位，四舍五入） */
+    public BigDecimal calc(BigDecimal basePrice) {
+        return basePrice.multiply(rate).setScale(2, RoundingMode.HALF_UP);
     }
 
     /** 该席别在车次配置里的定员数 */

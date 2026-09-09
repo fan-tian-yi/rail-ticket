@@ -14,7 +14,6 @@ public class BizException extends RuntimeException {
         this.code = code;
     }
 
-    /** 推荐用法：throw new BizException(ErrorCode.NO_TICKET) */
     public BizException(ErrorCode errorCode) {
         super(errorCode.getMessage());
         this.code = errorCode.getCode();

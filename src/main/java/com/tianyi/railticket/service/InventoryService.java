@@ -2,9 +2,8 @@ package com.tianyi.railticket.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tianyi.railticket.common.BizException;
+import com.tianyi.railticket.common.Check;
 import com.tianyi.railticket.common.Const;
-import com.tianyi.railticket.common.ErrorCode;
 import com.tianyi.railticket.common.SeatType;
 import com.tianyi.railticket.entity.TrainDO;
 import com.tianyi.railticket.entity.TrainStationDO;
@@ -32,7 +31,6 @@ public class InventoryService {
     private static final String KEY_PREFIX = "rt:stock";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.BASIC_ISO_DATE;
     private static final int STATUS_ONLINE = 1;
-    private static final int DEFAULT_WARM_UP_DAYS = 7;
 
     private final StringRedisTemplate stringRedisTemplate;
     private final TrainMapper trainMapper;
@@ -55,7 +53,7 @@ public class InventoryService {
 
     /** 启动预热（默认 7 天） */
     public int warmUp() {
-        return warmUp(DEFAULT_WARM_UP_DAYS);
+        return warmUp(Const.PRESALE_DAYS);
     }
 
     /** 预热未来 N 天所有上架车次的库存 */
@@ -150,6 +148,8 @@ public class InventoryService {
 
     /** 查区间最小余票（任一 key 缺失按 0 处理） */
     public int getAvailable(Long trainId, LocalDate date, Integer seatType, int fromSeq, int toSeq) {
+        Check.trainDate(date);
+
         List<String> keys = segKeys(trainId, date, seatType, fromSeq, toSeq);
         if (keys.isEmpty()) {
             return 0;
@@ -170,12 +170,7 @@ public class InventoryService {
     public SegRange resolveRange(Long trainId, Long fromStationId, Long toStationId) {
         Integer fromSeq = trainStationMapper.selectSeq(trainId, fromStationId);
         Integer toSeq = trainStationMapper.selectSeq(trainId, toStationId);
-        if (fromSeq == null || toSeq == null) {
-            throw new BizException(ErrorCode.TRAIN_NOT_PASS_STATION);
-        }
-        if (fromSeq >= toSeq) {
-            throw new BizException(ErrorCode.INVALID_DIRECTION);
-        }
+        Check.segment(fromSeq, toSeq);
         return new SegRange(fromSeq, toSeq);
     }
 }

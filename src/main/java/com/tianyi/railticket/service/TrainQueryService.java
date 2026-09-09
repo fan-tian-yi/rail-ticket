@@ -1,5 +1,6 @@
 package com.tianyi.railticket.service;
 
+import com.tianyi.railticket.common.Check;
 import com.tianyi.railticket.dto.TrainQueryDTO;
 import com.tianyi.railticket.entity.model.TrainRoute;
 import com.tianyi.railticket.entity.StationDO;
@@ -24,6 +25,8 @@ public class TrainQueryService {
 
     /** 查两站之间的车次列表（含票价、时刻） */
     public List<TrainItemVO> query(TrainQueryDTO trainQueryDTO) {
+        Check.trainDate(trainQueryDTO.getTrainDate());
+
         List<TrainRoute> routes = trainStationMapper.selectRoutes(
                 trainQueryDTO.getFromStationId(), trainQueryDTO.getToStationId());
         if (routes.isEmpty()) {

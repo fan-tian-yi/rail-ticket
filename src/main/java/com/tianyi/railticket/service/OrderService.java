@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tianyi.railticket.common.BizException;
 import com.tianyi.railticket.common.Const;
 import com.tianyi.railticket.common.ErrorCode;
+import com.tianyi.railticket.common.Check;
 import com.tianyi.railticket.common.SeatType;
 import com.tianyi.railticket.dto.OrderCreateDTO;
 import com.tianyi.railticket.entity.OrderDO;
@@ -23,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -54,8 +54,8 @@ public class OrderService {
         Long userId = CURRENT_USER_ID;
 
         // ① 业务校验：乘车日期 / 预售期 / 乘客归属
-        //    参数非空、ID 正数、席别合法已由 OrderCreateDTO 的注解在 Controller 入口拦掉，此处不重复
-        checkTrainDate(dto.getTrainDate());
+        //    参数非空、ID 正数、席别合法已由 OrderCreateDTO 的注解在 Controller 入口拦掉
+        Check.trainDate(dto.getTrainDate());
         SeatType seatType = SeatType.ofOrThrow(dto.getSeatType());
         checkPassenger(dto.getPassengerId(), userId);
 
@@ -63,13 +63,11 @@ public class OrderService {
         SegmentInfo seg = resolveSegment(dto.getTrainId(), dto.getFromStationId(), dto.getToStationId());
 
         // ③ 算价：二等座基准价 × 席别系数
-        BigDecimal amount = seg.getPrice()
-                .multiply(seatType.getRate())
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal amount = seatType.calc(seg.getPrice());
 
         // ④ 扣库存：Lua 两段式保证原子性，失败时不会部分扣减
-        boolean deducted = inventoryService.deduct(
-                dto.getTrainId(), dto.getTrainDate(), seatType.getCode(),
+        boolean deducted = inventoryService.deduct(dto.getTrainId(),
+                dto.getTrainDate(), seatType.getCode(),
                 seg.getFromSeq(), seg.getToSeq());
         if (!deducted) {
             throw new BizException(ErrorCode.NO_TICKET);
@@ -113,17 +111,6 @@ public class OrderService {
 
     /* ==================== 私有校验 ==================== */
 
-    /** 乘车日期：不能早于今天，且不超预售期 */
-    private void checkTrainDate(LocalDate trainDate) {
-        LocalDate today = LocalDate.now(Const.ZONE);
-        if (trainDate.isBefore(today)) {
-            throw new BizException(ErrorCode.INVALID_DATE);
-        }
-        if (trainDate.isAfter(today.plusDays(Const.PRESALE_DAYS))) {
-            throw new BizException(ErrorCode.BEYOND_PRESALE);
-        }
-    }
-
     /** 乘客归属：存在且属于当前用户（防越权） */
     private void checkPassenger(Long passengerId, Long userId) {
         PassengerDO passenger = passengerMapper.selectOne(new LambdaQueryWrapper<PassengerDO>()
@@ -140,9 +127,7 @@ public class OrderService {
         if (seg == null) {
             throw new BizException(ErrorCode.TRAIN_NOT_PASS_STATION);
         }
-        if (seg.getFromSeq() >= seg.getToSeq()) {
-            throw new BizException(ErrorCode.INVALID_DIRECTION);
-        }
+        Check.segment(seg.getFromSeq(), seg.getToSeq());
         return seg;
     }
 
