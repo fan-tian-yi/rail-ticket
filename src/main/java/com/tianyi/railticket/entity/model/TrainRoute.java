@@ -10,5 +10,7 @@ public class TrainRoute {
     private Long trainId;
     private LocalTime depart;
     private LocalTime arrive;
-    private BigDecimal price;
+
+    /** 本次行程里程，票价由 basePrice(里程) × 席别倍率 现算 */
+    private BigDecimal distance;
 }

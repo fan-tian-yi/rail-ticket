@@ -14,7 +14,16 @@ public class TrainItemVO {
     private String toStationName;
     private LocalDateTime departTime;
     private LocalDateTime arriveTime;
-    private BigDecimal price;
+
+    /** 二等座票价（列表主显） */
+    private BigDecimal secondPrice;
+
+    /** 一等座票价 */
+    private BigDecimal firstPrice;
+
+    /** 商务座票价 */
+    private BigDecimal businessPrice;
+
     private String seatConfig;
     private Integer available;
 }

@@ -17,11 +17,15 @@ public interface TrainStationMapper extends BaseMapper<TrainStationDO> {
             SELECT A.train_id,
             A.depart_time              AS depart,
             B.arrive_time              AS arrive,
-            B.price_cum - A.price_cum  AS price
+            B.distance_cum - A.distance_cum AS distance
             FROM t_train_station A
             JOIN t_train_station B
             ON A.train_id = B.train_id
             AND A.seq < B.seq
+            JOIN t_train T
+            ON T.id = A.train_id
+            AND T.status = 1
+            AND T.deleted = 0
             WHERE A.station_id = #{fromStationId}
             AND B.station_id = #{toStationId}
            """)
@@ -36,7 +40,7 @@ public interface TrainStationMapper extends BaseMapper<TrainStationDO> {
                B.seq                     AS toSeq,
                A.depart_time             AS depart,
                B.arrive_time             AS arrive,
-               B.price_cum - A.price_cum AS price
+               B.distance_cum - A.distance_cum AS distance
         FROM t_train_station A
         JOIN t_train_station B ON A.train_id = B.train_id
         WHERE A.train_id   = #{trainId}
@@ -46,4 +50,8 @@ public interface TrainStationMapper extends BaseMapper<TrainStationDO> {
     SegmentInfo selectSegment(@Param("trainId") Long trainId,
                               @Param("fromStationId") Long fromStationId,
                               @Param("toStationId") Long toStationId);
+
+    /** 该车次最大站序（无经停记录时返回 null） */
+    @Select("SELECT MAX(seq) FROM t_train_station WHERE train_id = #{trainId}")
+    Integer selectMaxSeq(@Param("trainId") Long trainId);
 }

@@ -12,5 +12,6 @@ public class SegmentInfo {
     private int toSeq;
     private LocalTime depart;
     private LocalTime arrive;
-    private BigDecimal price;
+    /** 区间里程(km) = 到达站累计里程 - 出发站累计里程；票价由 PriceCalculator 按它算 */
+    private BigDecimal distance;
 }

@@ -4,18 +4,21 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tianyi.railticket.common.BizException;
+import com.tianyi.railticket.common.Check;
 import com.tianyi.railticket.common.Const;
 import com.tianyi.railticket.common.ErrorCode;
-import com.tianyi.railticket.common.Check;
+import com.tianyi.railticket.common.PriceCalculator;
 import com.tianyi.railticket.common.SeatType;
 import com.tianyi.railticket.dto.OrderCreateDTO;
 import com.tianyi.railticket.entity.OrderDO;
 import com.tianyi.railticket.entity.PassengerDO;
 import com.tianyi.railticket.entity.StockDeductionLogDO;
+import com.tianyi.railticket.entity.TrainDO;
 import com.tianyi.railticket.entity.model.SegmentInfo;
 import com.tianyi.railticket.mapper.OrderMapper;
 import com.tianyi.railticket.mapper.PassengerMapper;
 import com.tianyi.railticket.mapper.StockDeductionLogMapper;
+import com.tianyi.railticket.mapper.TrainMapper;
 import com.tianyi.railticket.mapper.TrainStationMapper;
 import com.tianyi.railticket.vo.OrderCreateVO;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +47,7 @@ public class OrderService {
     private final InventoryService inventoryService;
     private final PassengerMapper passengerMapper;
     private final TrainStationMapper trainStationMapper;
+    private final TrainMapper trainMapper;
     private final OrderMapper orderMapper;
     private final StockDeductionLogMapper stockDeductionLogMapper;
     private final ObjectMapper objectMapper;
@@ -53,17 +57,18 @@ public class OrderService {
     public OrderCreateVO create(OrderCreateDTO dto) {
         Long userId = CURRENT_USER_ID;
 
-        // ① 业务校验：乘车日期 / 预售期 / 乘客归属
+        // ① 业务校验：乘车日期 / 预售期 / 车次可售 / 乘客归属
         //    参数非空、ID 正数、席别合法已由 OrderCreateDTO 的注解在 Controller 入口拦掉
         Check.trainDate(dto.getTrainDate());
+        checkTrainOnline(dto.getTrainId());
         SeatType seatType = SeatType.ofOrThrow(dto.getSeatType());
         checkPassenger(dto.getPassengerId(), userId);
 
-        // ② 区间解析：一次 SQL 同时拿到 seg 区间、票价、时刻
+        // ② 区间解析：一次 SQL 同时拿到 seg 区间、区间里程、时刻
         SegmentInfo seg = resolveSegment(dto.getTrainId(), dto.getFromStationId(), dto.getToStationId());
 
-        // ③ 算价：二等座基准价 × 席别系数
-        BigDecimal amount = seatType.calc(seg.getPrice());
+        // ③ 算价：按区间里程算二等座基准价（递远递减），再乘席别系数
+        BigDecimal amount = seatType.calc(PriceCalculator.basePrice(seg.getDistance()));
 
         // ④ 扣库存：Lua 两段式保证原子性，失败时不会部分扣减
         boolean deducted = inventoryService.deduct(dto.getTrainId(),
@@ -110,6 +115,14 @@ public class OrderService {
     }
 
     /* ==================== 私有校验 ==================== */
+
+    /** 车次可售：存在且已上架（软删除由 @TableLogic 在 selectById 自动过滤） */
+    private void checkTrainOnline(Long trainId) {
+        TrainDO train = trainMapper.selectById(trainId);
+        if (train == null || !Integer.valueOf(Const.TRAIN_STATUS_ONLINE).equals(train.getStatus())) {
+            throw new BizException(ErrorCode.TRAIN_NOT_FOUND);
+        }
+    }
 
     /** 乘客归属：存在且属于当前用户（防越权） */
     private void checkPassenger(Long passengerId, Long userId) {

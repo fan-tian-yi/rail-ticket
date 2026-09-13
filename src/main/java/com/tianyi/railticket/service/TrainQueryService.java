@@ -1,6 +1,8 @@
 package com.tianyi.railticket.service;
 
 import com.tianyi.railticket.common.Check;
+import com.tianyi.railticket.common.PriceCalculator;
+import com.tianyi.railticket.common.SeatType;
 import com.tianyi.railticket.dto.TrainQueryDTO;
 import com.tianyi.railticket.entity.model.TrainRoute;
 import com.tianyi.railticket.entity.StationDO;
@@ -10,12 +12,15 @@ import com.tianyi.railticket.mapper.TrainMapper;
 import com.tianyi.railticket.mapper.TrainStationMapper;
 import com.tianyi.railticket.vo.TrainItemVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TrainQueryService {
@@ -43,6 +48,12 @@ public class TrainQueryService {
         for (TrainRoute r : routes) {
             TrainDO train = trainMapper.selectById(r.getTrainId());
 
+            // 经停记录漏配里程会让 basePrice 拆箱成 NPE → 500，这里跳过并告警
+            if (r.getDistance() == null) {
+                log.warn("车次 {} 缺少里程数据，跳过该车次 | trainId={}", train.getTrainNo(), train.getId());
+                continue;
+            }
+
             TrainItemVO vo = new TrainItemVO();
             vo.setTrainId(train.getId());
             vo.setTrainNo(train.getTrainNo());
@@ -51,7 +62,13 @@ public class TrainQueryService {
             vo.setToStationName(to.getName());
             vo.setDepartTime(date.atTime(r.getDepart()));   // TODO: 跨日车次到达日期 +1
             vo.setArriveTime(date.atTime(r.getArrive()));
-            vo.setPrice(r.getPrice());
+
+            // 三档席别票价都由「本次行程里程」现算，服务端不存价格
+            BigDecimal base = PriceCalculator.basePrice(r.getDistance());
+            vo.setSecondPrice(SeatType.SECOND.calc(base));
+            vo.setFirstPrice(SeatType.FIRST.calc(base));
+            vo.setBusinessPrice(SeatType.BUSINESS.calc(base));
+
             vo.setSeatConfig(train.getSeatConfig());         // 原样透传
             vo.setAvailable(null);                           // Step3 Redis 库存填充
             result.add(vo);
