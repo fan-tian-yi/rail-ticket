@@ -1,5 +1,7 @@
 package com.tianyi.railticket.common;
 
+import com.tianyi.railticket.common.exception.BizException;
+import com.tianyi.railticket.common.exception.ErrorCode;
 import com.tianyi.railticket.common.validation.CodeEnum;
 import com.tianyi.railticket.entity.model.SeatConfig;
 import lombok.AllArgsConstructor;

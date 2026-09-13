@@ -1,5 +1,8 @@
 package com.tianyi.railticket.common;
 
+import com.tianyi.railticket.common.exception.BizException;
+import com.tianyi.railticket.common.exception.ErrorCode;
+
 import java.time.LocalDate;
 
 /** 业务规则校验（L3）：DTO 注解表达不了、依赖"当前状态"的规则集中在这里 */

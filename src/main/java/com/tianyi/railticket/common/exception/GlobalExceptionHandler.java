@@ -1,6 +1,7 @@
-package com.tianyi.railticket.common;
+package com.tianyi.railticket.common.exception;
 
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.tianyi.railticket.common.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;

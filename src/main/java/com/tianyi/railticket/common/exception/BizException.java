@@ -1,4 +1,4 @@
-package com.tianyi.railticket.common;
+package com.tianyi.railticket.common.exception;
 
 
 import lombok.Getter;

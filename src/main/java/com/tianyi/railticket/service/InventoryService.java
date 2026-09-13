@@ -2,11 +2,12 @@ package com.tianyi.railticket.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tianyi.railticket.common.exception.BizException;
 import com.tianyi.railticket.common.Check;
 import com.tianyi.railticket.common.Const;
+import com.tianyi.railticket.common.exception.ErrorCode;
 import com.tianyi.railticket.common.SeatType;
 import com.tianyi.railticket.entity.TrainDO;
-import com.tianyi.railticket.entity.TrainStationDO;
 import com.tianyi.railticket.entity.model.SeatConfig;
 import com.tianyi.railticket.entity.model.SegRange;
 import com.tianyi.railticket.mapper.TrainMapper;
@@ -30,7 +31,6 @@ public class InventoryService {
 
     private static final String KEY_PREFIX = "rt:stock";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.BASIC_ISO_DATE;
-    private static final int STATUS_ONLINE = 1;
 
     private final StringRedisTemplate stringRedisTemplate;
     private final TrainMapper trainMapper;
@@ -61,35 +61,44 @@ public class InventoryService {
         LocalDate today = LocalDate.now(Const.ZONE);
         int created = 0;
 
-        // 查出所有上架的车次
+        // 1. 查出所有上架车次（下架车次不预热，不占 Redis）
         List<TrainDO> trains = trainMapper.selectList(new LambdaQueryWrapper<TrainDO>()
-                .eq(TrainDO::getStatus, STATUS_ONLINE));
+                .eq(TrainDO::getStatus, Const.TRAIN_STATUS_ONLINE));
         if (trains.isEmpty()) {
-            log.warn("没有上架的车次（status={}），预热跳过", STATUS_ONLINE);
+            LocalDate last = today.plusDays(days - 1);
+            log.warn("t_train 无上架车次，跳过预热 | 窗口={} ~ {} | 影响：全部车次库存 key 未生成，查票将返回无票",
+                    today, last);
+            return 0;
         }
 
+        // 2. 逐车次预热
         for (TrainDO train : trains) {
-            // 把 seat_config JSON 转成对象
+            // 2.1 解析 seat_config JSON（脏数据跳过该车次，不影响其他车次）
             SeatConfig cfg;
             try {
                 cfg = objectMapper.readValue(train.getSeatConfig(), SeatConfig.class);
             } catch (Exception e) {
-                log.error("车次 {} 座位配置解析失败，跳过。原始内容：{}", train.getId(), train.getSeatConfig(), e);
+                log.error("车次 {} 座位配置解析失败，跳过该车次（本次无票可售）| seatConfig={}",
+                        train.getTrainNo(), train.getSeatConfig(), e);
                 continue;
             }
 
+            // 2.2 算区间数：站数不足 2 则没有可卖区间，跳过
             int segCount = querySegCount(train.getId());
             if (segCount <= 0) {
-                log.warn("车次 {} 经停不足 2 站，跳过", train.getId());
+                log.warn("车次 {} 经停不足 2 站，无法划区间，跳过该车次（本次无票可售）| segCount={}",
+                        train.getTrainNo(), segCount);
                 continue;
             }
 
+            // 2.3 逐日 × 逐席别 × 逐区间建 key：d=0 是今天，窗口 [今天, 今天+days-1]
             for (int d = 0; d < days; d++) {
                 LocalDate date = today.plusDays(d);
                 for (SeatType type : SeatType.values()) {
                     int capacity = type.capacityOf(cfg);
                     for (int seg = 1; seg <= segCount; seg++) {
                         String key = segKey(train.getId(), date, type.getCode(), seg);
+                        // setIfAbsent：已存在则跳过，不覆盖已扣减的库存；created 只统计真新建的
                         Boolean ok = stringRedisTemplate.opsForValue()
                                 .setIfAbsent(key, String.valueOf(capacity), days + 2L, TimeUnit.DAYS);
                         if (Boolean.TRUE.equals(ok)) {
@@ -99,20 +108,21 @@ public class InventoryService {
                 }
             }
         }
-        log.info("库存预热完成，新建 key {} 个", created);
         return created;
     }
 
-    /** 总区间数 = 最大 seq - 1 */
+    /** 总区间数 = 最大 seq - 1（少于 2 站时为 0）；取 MAX 而非 COUNT，断号时上界仍覆盖全部 seg 编号 */
     private int querySegCount(Long trainId) {
-        List<TrainStationDO> list = trainStationMapper.selectList(
-                new LambdaQueryWrapper<TrainStationDO>()
-                        .eq(TrainStationDO::getTrainId, trainId)
-                        .orderByDesc(TrainStationDO::getSeq));
-        if (list.isEmpty()) {
-            return 0;
+        Integer maxSeq = trainStationMapper.selectMaxSeq(trainId);
+        return maxSeq == null ? 0 : maxSeq - 1;
+    }
+
+    /** 车次可售：存在且已上架（软删除由 @TableLogic 在 selectById 自动过滤） */
+    private void checkTrainOnline(Long trainId) {
+        TrainDO train = trainMapper.selectById(trainId);
+        if (train == null || !Integer.valueOf(Const.TRAIN_STATUS_ONLINE).equals(train.getStatus())) {
+            throw new BizException(ErrorCode.TRAIN_NOT_FOUND);
         }
-        return list.get(0).getSeq() - 1;
     }
 
     /** 扣减 Lua：先检查全部 seg 够不够，够才逐段 DECRBY，任一不足返回 0 */
@@ -149,6 +159,7 @@ public class InventoryService {
     /** 查区间最小余票（任一 key 缺失按 0 处理） */
     public int getAvailable(Long trainId, LocalDate date, Integer seatType, int fromSeq, int toSeq) {
         Check.trainDate(date);
+        checkTrainOnline(trainId);
 
         List<String> keys = segKeys(trainId, date, seatType, fromSeq, toSeq);
         if (keys.isEmpty()) {
@@ -158,7 +169,7 @@ public class InventoryService {
         for (String key : keys) {
             String value = stringRedisTemplate.opsForValue().get(key);
             if (value == null) {
-                log.warn("库存 key 缺失，按无票处理：{}", key);
+                log.debug("库存 key 缺失，按无票处理 | key={}", key);
                 return 0;
             }
             min = Math.min(min, Integer.parseInt(value));
