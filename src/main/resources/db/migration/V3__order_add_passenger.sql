@@ -1,3 +1,5 @@
+# order表缺少乘车人id，只有用户的id
+
 USE rail_ticket;
 
 ALTER TABLE t_order

@@ -1,12 +1,4 @@
--- =============================================
--- V1__init_schema.sql
--- 火车票购票系统 · 初始建表（7 张表）
--- 主键：雪花 ID（BIGINT），为分库分表铺路 + 防枚举越权
--- 决策点见交付说明（6 个）：
---   1. 主键 BIGINT 雪花（assign_id）        2. 席别配置用 JSON 列
---   3. 经停时刻用 TIME（模板）               4. 票价存累计价（一次减法）
---   5. order_no 雪花生成（唯一 + 防枚举）    6. train_date 业务键，与 create_time 分开
--- =============================================
+# 初始建表（7 张表）
 
 CREATE DATABASE IF NOT EXISTS rail_ticket DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci;
 USE rail_ticket;

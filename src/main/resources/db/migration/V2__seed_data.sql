@@ -1,3 +1,5 @@
+# 初始数据5张
+
 USE rail_ticket;
 INSERT INTO t_station(id, name, code, city, lng, lat)
 VALUES (1001, '北京南', 'BJP', '北京', 116.378803, 39.871933),
