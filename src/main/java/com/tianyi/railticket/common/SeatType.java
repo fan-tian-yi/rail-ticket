@@ -13,13 +13,13 @@ import java.math.RoundingMode;
 @Getter
 @AllArgsConstructor
 public enum SeatType implements CodeEnum {
-
+    /** 二等座倍率：1 */
     SECOND(1, "二等座", new BigDecimal("1.00")),
 
-    /** 一等座倍率：12306 实测 10 个 OD 的「一等/二等」为 1.6782~1.6835，均值 1.680 */
+    /** 一等座倍率：1.680 */
     FIRST(2, "一等座", new BigDecimal("1.68")),
 
-    /** 商务座倍率：12306 实测 10 个 OD 的「商务/二等」为 3.7372~3.7532，均值 3.746 */
+    /** 商务座倍率：3.75 */
     BUSINESS(3, "商务座", new BigDecimal("3.75"));
 
     private final Integer code;
