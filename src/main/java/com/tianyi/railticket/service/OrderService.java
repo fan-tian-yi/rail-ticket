@@ -2,18 +2,22 @@ package com.tianyi.railticket.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tianyi.railticket.common.exception.BizException;
 import com.tianyi.railticket.common.Check;
 import com.tianyi.railticket.common.Const;
-import com.tianyi.railticket.common.exception.ErrorCode;
 import com.tianyi.railticket.common.PriceCalculator;
 import com.tianyi.railticket.common.SeatType;
+import com.tianyi.railticket.common.exception.BizException;
+import com.tianyi.railticket.common.exception.ErrorCode;
 import com.tianyi.railticket.dto.OrderCreateDTO;
+import com.tianyi.railticket.dto.OrderRefundDTO;
 import com.tianyi.railticket.entity.OrderDO;
 import com.tianyi.railticket.entity.PassengerDO;
 import com.tianyi.railticket.entity.StockDeductionLogDO;
 import com.tianyi.railticket.entity.TrainDO;
+import com.tianyi.railticket.entity.model.SegRange;
 import com.tianyi.railticket.entity.model.SegmentInfo;
 import com.tianyi.railticket.mapper.OrderMapper;
 import com.tianyi.railticket.mapper.PassengerMapper;
@@ -43,6 +47,9 @@ public class OrderService {
     private static final Long CURRENT_USER_ID = 3001L;
 
     private static final DateTimeFormatter ORDER_NO_DATE_FMT = DateTimeFormatter.BASIC_ISO_DATE;
+
+    /** 流水里的 seg 列表类型：下单写入、退票/超时关单/对账读出回补，提成常量避免每处都写 TypeReference */
+    private static final TypeReference<List<Integer>> SEG_LIST_TYPE = new TypeReference<>() {};
 
     private final InventoryService inventoryService;
     private final PassengerMapper passengerMapper;
@@ -114,6 +121,78 @@ public class OrderService {
         return vo;
     }
 
+    /** 退票：CAS 抢订单所有权 → 从扣减流水还原区间 → 回补库存 → 记退票流水 */
+    @Transactional(rollbackFor = Exception.class)
+    public void refund(OrderRefundDTO dto) {
+        Long userId = CURRENT_USER_ID;
+        String orderNo = dto.getOrderNo();
+
+        // ① 查订单 + 归属校验：不是本人的单查出来就是 null，统一报"不存在"以免泄露订单号是否有效
+        OrderDO order = orderMapper.selectOne(new LambdaQueryWrapper<OrderDO>()
+                .eq(OrderDO::getOrderNo, orderNo)
+                .eq(OrderDO::getUserId, userId));
+        if (order == null) {
+            throw new BizException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        // ② 定目标状态：待支付→用户取消，已支付→已退票，其余状态一律拒绝
+        int target;
+        if (order.getStatus() == Const.STATUS_WAIT_PAY) {
+            target = Const.STATUS_USER_CANCEL;
+        } else if (order.getStatus() == Const.STATUS_PAID) {
+            target = Const.STATUS_REFUNDED;
+        } else {
+            throw new BizException(ErrorCode.ORDER_STATUS_INVALID);
+        }
+
+        // ③ CAS 抢所有权：rows=0 说明并发下已被别人退掉，此时绝不能回补，否则库存凭空多一份
+        int rows = orderMapper.casStatus(orderNo, order.getStatus(), target,
+                LocalDateTime.now(Const.ZONE));
+        if (rows == 0) {
+            throw new BizException(ErrorCode.ORDER_STATUS_INVALID);
+        }
+
+        // ④ 回补库存：区间取自扣减流水，不重新解析车站 ID
+        SegRange range = resolveDeductedRange(orderNo);
+        inventoryService.restore(order.getTrainId(), order.getTrainDate(),
+                order.getSeatType(), range.getFromSeq(), range.getToSeq());
+
+        // ⑤ 记退票流水（delta=+1），对账任务靠它比对 Redis 库存与 DB 订单
+        StockDeductionLogDO refundLog = new StockDeductionLogDO();
+        refundLog.setOrderNo(orderNo);
+        refundLog.setTrainId(order.getTrainId());
+        refundLog.setTrainDate(order.getTrainDate());
+        refundLog.setSeatType(order.getSeatType());
+        refundLog.setSegments(segJson(range.getFromSeq(), range.getToSeq()));
+        refundLog.setDelta(1);
+        stockDeductionLogMapper.insert(refundLog);
+
+        log.info("退票成功 | orderNo={} userId={} status={}→{} trainId={} trainDate={} segs=[{}, {})",
+                orderNo, userId, order.getStatus(), target, order.getTrainId(), order.getTrainDate(),
+                range.getFromSeq(), range.getToSeq());
+    }
+
+    /** 扫描超时未支付订单：逐条 CAS 抢占后回补库存，返回成功关闭的笔数 */
+    public int closeTimeoutOrders(int limit) {
+        List<OrderDO> timeoutOrders = orderMapper.selectTimeoutOrders(LocalDateTime.now(Const.ZONE), limit);
+        if (timeoutOrders.isEmpty()) {
+            return 0;
+        }
+
+        int closed = 0;
+        for (OrderDO order : timeoutOrders) {
+            try {
+                if (closeOne(order)) {
+                    closed++;
+                }
+            } catch (Exception e) {
+                // 单条失败不中断整批；它的 status 仍是 0，下个周期还会被扫到
+                log.error("超时关单失败 | orderNo={}", order.getOrderNo(), e);
+            }
+        }
+        return closed;
+    }
+
     /* ==================== 私有校验 ==================== */
 
     /** 车次可售：存在且已上架（软删除由 @TableLogic 在 selectById 自动过滤） */
@@ -145,6 +224,67 @@ public class OrderService {
     }
 
     /* ==================== 私有工具 ==================== */
+
+    /** 关闭单张超时订单：CAS 抢占 → 回补库存 → 记流水；抢不到返回 false（已被支付或已退票） */
+    private boolean closeOne(OrderDO order) {
+        String orderNo = order.getOrderNo();
+
+        // CAS：仍是待支付才能关。rows=0 说明用户恰好付款或退票，此时绝不能回补，否则库存凭空多一份
+        int rows = orderMapper.casStatus(orderNo, Const.STATUS_WAIT_PAY,
+                Const.STATUS_TIMEOUT_CANCEL, LocalDateTime.now(Const.ZONE));
+        if (rows == 0) {
+            return false;
+        }
+
+        SegRange range = resolveDeductedRange(orderNo);
+        inventoryService.restore(order.getTrainId(), order.getTrainDate(),
+                order.getSeatType(), range.getFromSeq(), range.getToSeq());
+
+        StockDeductionLogDO closeLog = new StockDeductionLogDO();
+        closeLog.setOrderNo(orderNo);
+        closeLog.setTrainId(order.getTrainId());
+        closeLog.setTrainDate(order.getTrainDate());
+        closeLog.setSeatType(order.getSeatType());
+        closeLog.setSegments(segJson(range.getFromSeq(), range.getToSeq()));
+        closeLog.setDelta(1);
+        stockDeductionLogMapper.insert(closeLog);
+
+        log.info("超时关单 | orderNo={} trainId={} trainDate={} segs=[{}, {})",
+                orderNo, order.getTrainId(), order.getTrainDate(),
+                range.getFromSeq(), range.getToSeq());
+        return true;
+    }
+
+    /** 从扣减流水还原要回补的区间（扣多少还多少；toSeq 左闭右开故 +1）—— 退票与超时关单共用 */
+    private SegRange resolveDeductedRange(String orderNo) {
+        StockDeductionLogDO deductLog = stockDeductionLogMapper.selectOne(
+                new LambdaQueryWrapper<StockDeductionLogDO>()
+                        .eq(StockDeductionLogDO::getOrderNo, orderNo)
+                        .eq(StockDeductionLogDO::getDelta, -1)
+                        .last("LIMIT 1"));
+        if (deductLog == null) {
+            throw new BizException(ErrorCode.SYSTEM_ERROR);
+        }
+        List<Integer> segs;
+        try {
+            segs = objectMapper.readValue(deductLog.getSegments(), SEG_LIST_TYPE);
+        } catch (JsonProcessingException e) {
+            throw new BizException(ErrorCode.SYSTEM_ERROR);
+        }
+        if (segs.isEmpty()) {
+            throw new BizException(ErrorCode.SYSTEM_ERROR);
+        }
+        return new SegRange(segs.getFirst(), segs.getLast() + 1);
+    }
+
+    /** seg 区间 → 流水里的 JSON 数组（与下单写入的格式保持一致） */
+    private String segJson(int fromSeq, int toSeq) {
+        try {
+            return objectMapper.writeValueAsString(segList(fromSeq, toSeq));
+        } catch (JsonProcessingException e) {
+            throw new BizException(ErrorCode.SYSTEM_ERROR);
+        }
+    }
 
     /** 组装订单（票价/席别/日期在下单时冻结成快照） */
     private OrderDO buildOrder(OrderCreateDTO dto, Long userId, SeatType seatType,
