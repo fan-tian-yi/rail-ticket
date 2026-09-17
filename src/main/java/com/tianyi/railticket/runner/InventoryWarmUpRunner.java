@@ -27,7 +27,7 @@ public class InventoryWarmUpRunner implements ApplicationRunner {
         }
     }
 
-    /** 每日补预热：覆盖「服务长跑后新日期无库存」的假售罄 */
+    /** 每日补预热：覆盖新日期无库存 */
     @Scheduled(cron = "0 0 0 * * ?", zone = Const.ZONE_ID)
     public void scheduledWarmUp(){
         try {
