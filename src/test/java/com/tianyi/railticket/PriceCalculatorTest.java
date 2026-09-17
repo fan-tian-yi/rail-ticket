@@ -3,47 +3,61 @@ package com.tianyi.railticket;
 import com.tianyi.railticket.common.PriceCalculator;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-import static org.assertj.core.api.Assertions.assertThat;
+public class PriceCalculatorTest {
+    /** 真实获取的数据，前面是距离km，后面是价格 */
+    private static final double[][] SAMPLES = {
+            {281.2, 141}, {293.5, 137}, {327.6, 158}, {417.9, 194}, {608.8, 293},
+            {621.1, 289}, {711.4, 321}, {902.3, 416}, {1039.0, 463}, {1320.2, 576},
+    };
 
-/** 票价计算：按里程递远递减（锁定拟合系数，误改即红） */
-class PriceCalculatorTest {
-
-    /** 拟合样本回代：G547 单趟车的 10 个 OD，偏差应 &lt;5%（实测最大 3.79%） */
+    /** 测试价格计算方法，检测误差是否在5％内 */
     @Test
-    void basePrice_fitsRealSamples() {
-        assertFits("281.2", 141.00);   // 南京南→上海虹桥
-        assertFits("293.5", 137.00);   // 济南西→徐州东
-        assertFits("327.6", 158.00);   // 徐州东→南京南
-        assertFits("417.9", 194.00);   // 北京南→济南西
-        assertFits("608.8", 293.00);   // 徐州东→上海虹桥
-        assertFits("621.1", 289.00);   // 济南西→南京南
-        assertFits("711.4", 321.00);   // 北京南→徐州东
-        assertFits("902.3", 416.00);   // 济南西→上海虹桥
-        assertFits("1039.0", 463.00);  // 北京南→南京南
-        assertFits("1320.2", 576.00);  // 北京南→上海虹桥
-    }
-
-    /** 递远递减：平均单价必须随里程单调递减（系数改坏的唯一判据） */
-    @Test
-    void basePrice_unitPriceDecreasesWithDistance() {
-        BigDecimal prevUnit = null;
-        for (int km = 100; km <= 1400; km += 100) {
-            BigDecimal d = BigDecimal.valueOf(km);
-            BigDecimal unit = PriceCalculator.basePrice(d).divide(d, 4, RoundingMode.HALF_UP);
-            if (prevUnit != null) {
-                assertThat(unit).as("里程 %s 的平均单价应低于上一档", km).isLessThan(prevUnit);
-            }
-            prevUnit = unit;
+    public void testBasePrice(){
+        for(double[] sample : SAMPLES) {
+            BigDecimal actual = PriceCalculator.basePrice(BigDecimal.valueOf(sample[0]));
+            //计算5％误差值
+            BigDecimal tolerance = BigDecimal.valueOf(sample[1]).multiply(BigDecimal.valueOf(0.05));
+            assertThat(actual).as("km="+sample[0]).isCloseTo(BigDecimal.valueOf(sample[1]), within(tolerance));
         }
     }
 
-    /** 断言：按里程算出的票价与真实票价偏差 &lt;5% */
-    private void assertFits(String km, double realPrice) {
-        BigDecimal actual = PriceCalculator.basePrice(new BigDecimal(km));
-        double diff = Math.abs(actual.doubleValue() - realPrice) / realPrice;
-        assertThat(diff).as("里程 %s 算出 %s，真实 %s", km, actual, realPrice).isLessThan(0.05);
+    /** 确保价格随里程增加 */
+    @Test
+    public void testBiggerPrice(){
+        BigDecimal prev = null;
+        for (int km = 100; km <= 1400; km += 100) {
+            BigDecimal cur = PriceCalculator.basePrice(BigDecimal.valueOf(km));
+            if (prev != null) {
+                assertThat(cur).as("km=" + km).isGreaterThan(prev);
+            }
+            prev = cur;
+        }
+    }
+
+    /** 确保价格随里程增加逐渐缓慢上涨 */
+    @Test
+    public void testSlowerPrice(){
+        BigDecimal prevRate = null;
+        for (int km = 100; km <= 1400; km += 100) {
+            BigDecimal cur = PriceCalculator.basePrice(BigDecimal.valueOf(km));
+            BigDecimal curRate = cur.divide(BigDecimal.valueOf(km), 6, RoundingMode.HALF_UP);
+            if (prevRate != null) {
+                assertThat(curRate).as("km=" + km).isLessThan(prevRate);
+            }
+            prevRate = curRate;
+        }
+    }
+
+    /** 比较边界的计算正确 */
+    @Test
+    public void testBoundaries(){
+        BigDecimal basePrice = PriceCalculator.basePrice(BigDecimal.valueOf(0));
+        assertThat(basePrice).as("km=0").isEqualByComparingTo("0.00");
     }
 }

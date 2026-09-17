@@ -19,10 +19,14 @@ import org.junit.jupiter.api.Test;
  *             ⚠️ seat_types 必传，漏了会静默返回空 {"OT":[]}
  *             data.O = 二等座、data.M = 一等座、data.A9 = 商务座（元，形如 "¥576.0"）
  *
- * 调价正确姿势：改 SAMPLES → 跑本测试 → 把打印出的 A、B 替换到 PriceCalculator，不要手改系数
+ * 调价正确姿势：改 SAMPLES → 跑本类 → 把打印出的 A、B 替换到 PriceCalculator，不要手改系数
+ *
+ * ⚠️ 本类不是测试：没有断言，只打印分析报告。类名刻意不带 Test 后缀，因此 surefire
+ *    不会扫描它（mvn test 的报告里不会出现），@Disabled 只是双保险。
+ *    仅在调整计价模型或更换里程口径时手动运行。
  */
-@Disabled("仅在调整计价模型或更换里程口径时手动运行：结果是打印输出，无断言")
-class PriceFittingAnalysisTest {
+@Disabled("分析代码而非测试：类名不带 Test 后缀，surefire 不扫；此注解为双保险")
+class PriceFittingAnalysis {
 
     /** (里程 km, 二等座票价 元)：G547 单趟车的全部可用 OD */
     private static final double[][] SAMPLES = {

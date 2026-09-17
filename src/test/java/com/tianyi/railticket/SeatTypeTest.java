@@ -1,44 +1,68 @@
 package com.tianyi.railticket;
-
-import com.tianyi.railticket.common.PriceCalculator;
 import com.tianyi.railticket.common.SeatType;
+import com.tianyi.railticket.common.exception.BizException;
+import com.tianyi.railticket.entity.model.SeatConfig;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.Map;
+import static org.junit.jupiter.api.Assertions.*;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-/** 席别倍率：锁定 12306 实测区间，手误改错即红 */
-class SeatTypeTest {
-
-    /** 一等座倍率应落在实测区间内（10 个 OD：1.6782~1.6835） */
+public class SeatTypeTest {
+    /** 测试of方法，失败返回null */
     @Test
-    void firstRate_matchesRealData() {
-        assertThat(SeatType.FIRST.getRate().doubleValue())
-                .as("一等/二等 实测均值 1.680")
-                .isBetween(1.67, 1.69);
+    public void testOf(){
+        Map<Integer, SeatType> map = Map.of(
+                1, SeatType.SECOND,
+                2, SeatType.FIRST,
+                3, SeatType.BUSINESS
+        );
+        for(Map.Entry<Integer, SeatType> entry : map.entrySet()){
+            SeatType actual = SeatType.of(entry.getKey());
+            assertEquals(entry.getValue(), actual, "code=" + entry.getKey());
+        }
+        assertNull(SeatType.of(99), "code=99");
+        assertNull(SeatType.of(null), "code=null");
     }
 
-    /** 商务座倍率应落在实测区间内（10 个 OD：3.7372~3.7532） */
+    /** 测试ofOrThrow方法，失败抛出BizException异常 */
     @Test
-    void businessRate_matchesRealData() {
-        assertThat(SeatType.BUSINESS.getRate().doubleValue())
-                .as("商务/二等 实测均值 3.746")
-                .isBetween(3.73, 3.76);
+    public void testOfOrThrow(){
+        Map<Integer, SeatType> map = Map.of(
+                1, SeatType.SECOND,
+                2, SeatType.FIRST,
+                3, SeatType.BUSINESS
+        );
+        for(Map.Entry<Integer, SeatType> entry : map.entrySet()){
+            SeatType actual = SeatType.ofOrThrow(entry.getKey());
+            assertEquals(entry.getValue(), actual, "code=" + entry.getKey());
+        }
+        BizException thrown = assertThrows(BizException.class, () -> SeatType.ofOrThrow(99), "code=99, BizException");
+        assertEquals(40007, thrown.getCode() ,"code=99");
+        thrown = assertThrows(BizException.class, () -> SeatType.ofOrThrow(null), "code=null, BizException");
+        assertEquals(40007, thrown.getCode(), "code=null");
     }
 
-    /** 倍率必须严格递增：二等 &lt; 一等 &lt; 商务 */
+    /** 测试calc方法，确保倍率计算正确且无修改 */
     @Test
-    void rates_increaseBySeatClass() {
-        assertThat(SeatType.FIRST.getRate()).isGreaterThan(SeatType.SECOND.getRate());
-        assertThat(SeatType.BUSINESS.getRate()).isGreaterThan(SeatType.FIRST.getRate());
+    public void testCalc(){
+        assertEquals(new BigDecimal("100.00"), SeatType.SECOND.calc(new BigDecimal("100")), "SECOND price=100");
+        assertEquals(new BigDecimal("168.00"), SeatType.FIRST.calc(new BigDecimal("100")), "FIRST price=100");
+        assertEquals(new BigDecimal("375.00"), SeatType.BUSINESS.calc(new BigDecimal("100")), "BUSINESS price=100");
+        //测试四舍五入
+        assertEquals(new BigDecimal("100.01"), SeatType.SECOND.calc(new BigDecimal("100.005")), "FIRST price=100.005");
     }
 
-    /** 全程（1320.2km）三档票价应落在 12306 实测值附近（一等 967、商务 2156） */
+    /** 测试capacityOf方法 */
     @Test
-    void calc_appliesRateToBasePrice() {
-        BigDecimal base = PriceCalculator.basePrice(new BigDecimal("1320.2"));
-        assertThat(SeatType.FIRST.calc(base).doubleValue()).as("北京南→上海虹桥 一等座").isBetween(960.0, 1000.0);
-        assertThat(SeatType.BUSINESS.calc(base).doubleValue()).as("北京南→上海虹桥 商务座").isBetween(2140.0, 2210.0);
+    public void testCapacityOf(){
+        SeatConfig seatConfig = new SeatConfig();
+        seatConfig.setBusiness(30);
+        seatConfig.setFirst(50);
+        seatConfig.setSecond(100);
+
+        assertEquals(30, SeatType.BUSINESS.capacityOf(seatConfig), "seatType=BUSINESS");
+        assertEquals(50, SeatType.FIRST.capacityOf(seatConfig), "seatType=FIRST");
+        assertEquals(100, SeatType.SECOND.capacityOf(seatConfig), "seatType=SECOND");
     }
 }
