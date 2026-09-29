@@ -20,7 +20,7 @@
 | **回补区间取自流水** | 退票/关单的 seg 区间不重新解析车站 ID，而是读 `t_stock_deduction_log` 里当初扣减的那份——避免经停表变动导致 `ID→seq` 漂移，把票还到错误的区间 | ✅ |
 | **订单快照** | `t_order` 冗余存出发/到达站与票价，外部表变更不污染历史订单 | ✅ |
 | **参数校验分层** | 格式取值（DTO 注解）→ 类型（强类型 + 枚举）→ 业务（Service 手写 + 静态校验类），信任边界收敛在 Controller 入口 | ✅ |
-| **支付（模拟）** | 支付回调同样用 CAS，并额外判 `expire_time` 防超时支付（扫描任务只是清理工，不是裁判） | ⏳ |
+| **支付（模拟）** | 一条 CAS 同时卡两个条件：`status=0` 防重复支付、`expire_time > 支付时间` 防超时支付。两者的条件互斥，所以同一张订单不可能既被支付又被关单 —— 扫描任务只是清理工，不是裁判 | ✅ |
 | **对账** | `t_stock_deduction_log` 流水 + 定时任务比对 Redis 库存 vs MySQL 订单，漂移自动修正 | ⏳ |
 | **MySQL 主从 / Redis 哨兵** | 主写从读 + 自动故障转移 | ⏳ |
 
@@ -34,7 +34,8 @@
 
 **规划中**：Sa-Token（认证）、Sentinel（限流）、Caffeine（本地缓存）、Redisson
 
-**前端**：Vue 3 + Vite（车次查询 / 下单 / 我的订单 / 退票已实现，独立仓库 `rail-ticket-ui`）
+**前端**：Vue 3 + Vite（车次查询 / 三步下单页 / 支付 / 我的订单 / 退票，独立仓库 `rail-ticket-ui`）
+> 下单走**独立页面分三步**（填写信息 → 确认支付 → 支付完成），带 15 分钟支付倒计时；不引 vue-router，三个页面用 20 行 hash 路由搞定。
 > 没有引入 Element Plus —— 这是定制化 C 端界面，手写了一套基于 CSS 变量的设计系统；Element Plus 的强项是表单密集的后台系统。
 
 ---
@@ -79,6 +80,7 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 | GET | `/api/trains` | 车次查询（三档票价按里程现算 + 上架过滤） |
 | GET | `/api/inventory/available` | 区间余票（取覆盖区间的 seg 计数器最小值） |
 | POST | `/api/orders` | 下单（Lua 原子扣减 → 落库 → 失败回补） |
+| POST | `/api/orders/pay` | 支付（模拟渠道；CAS 同时卡「仍待支付」+「未过有效期」） |
 | POST | `/api/orders/refund` | 退票（待支付→已取消，已支付→已退票） |
 | POST | `/api/orders/close-timeout` | 手动触发超时关单（运维用，正常由定时任务执行） |
 | POST | `/api/inventory/warm-up` | 手动预热库存（运维用） |
@@ -114,8 +116,9 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
   - ✅ Lua 原子扣减 + 下单落库 + 失败回补
   - ✅ 车次查询 / 余票查询（三档票价按里程现算）
   - ✅ 退票（状态流转 + CAS 防重复退票 + 从扣减流水回补）
+  - ✅ 支付（模拟渠道，CAS 防重复支付 + 防超时支付）
   - ✅ 超时未支付自动关单（每分钟扫描 + CAS 抢占 + 回补库存）
-  - ✅ 前端（车次查询 / 下单 / 我的订单 / 退票）
+  - ✅ 前端（车次查询 / 三步下单页 / 支付 / 我的订单 / 退票）
   - ⏳ 登录（当前为固定测试用户，待接 Sa-Token）
 - **Phase 3** 高并发武器 ★：Sentinel 限流 + Caffeine 降级 + 压测报告
 - **Phase 4** 容灾运维：Redis 哨兵 + MySQL 主从 + 对账 + 云服务器部署
