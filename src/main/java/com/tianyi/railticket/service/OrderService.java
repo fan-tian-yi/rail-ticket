@@ -12,6 +12,7 @@ import com.tianyi.railticket.common.SeatType;
 import com.tianyi.railticket.common.exception.BizException;
 import com.tianyi.railticket.common.exception.ErrorCode;
 import com.tianyi.railticket.dto.OrderCreateDTO;
+import com.tianyi.railticket.dto.OrderPayDTO;
 import com.tianyi.railticket.dto.OrderRefundDTO;
 import com.tianyi.railticket.entity.OrderDO;
 import com.tianyi.railticket.entity.PassengerDO;
@@ -25,6 +26,7 @@ import com.tianyi.railticket.mapper.StockDeductionLogMapper;
 import com.tianyi.railticket.mapper.TrainMapper;
 import com.tianyi.railticket.mapper.TrainStationMapper;
 import com.tianyi.railticket.vo.OrderCreateVO;
+import com.tianyi.railticket.vo.OrderPayVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -170,6 +172,48 @@ public class OrderService {
         log.info("退票成功 | orderNo={} userId={} status={}→{} trainId={} trainDate={} segs=[{}, {})",
                 orderNo, userId, order.getStatus(), target, order.getTrainId(), order.getTrainDate(),
                 range.getFromSeq(), range.getToSeq());
+    }
+
+    /** 支付订单：CAS 抢订单所有权，仅待支付且未超时的单能付成功 */
+    public OrderPayVO pay(OrderPayDTO dto) {
+        Long userId = CURRENT_USER_ID;
+        String orderNo = dto.getOrderNo();
+
+        // ① 查订单 + 归属校验：条件里带上 userId，非本人的单查出来就是 null，统一报"不存在"以免泄露订单号是否有效
+        OrderDO order = orderMapper.selectOne(new LambdaQueryWrapper<OrderDO>()
+                .eq(OrderDO::getOrderNo, orderNo)
+                .eq(OrderDO::getUserId, userId));
+        if (order == null) {
+            throw new BizException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        // ② 先按状态快速拒绝：重复支付、已取消、已退票的单都不该走到 CAS
+        if (order.getStatus() == Const.STATUS_TIMEOUT_CANCEL) {
+            throw new BizException(ErrorCode.ORDER_EXPIRED);
+        }
+        if (order.getStatus() != Const.STATUS_WAIT_PAY) {
+            throw new BizException(ErrorCode.ORDER_STATUS_INVALID);
+        }
+
+        // ③ CAS 支付：status=0 防重复支付，expire_time > now 防超时支付
+        LocalDateTime payTime = LocalDateTime.now(Const.ZONE);
+        int rows = orderMapper.casPay(orderNo, payTime);
+        if (rows == 0) {
+            // ④ rows=0 有两种可能：状态已被改（退票/关单/并发支付），或仍待支付但已过有效期。
+            if (order.getExpireTime() != null && order.getExpireTime().isAfter(payTime)) {
+                throw new BizException(ErrorCode.ORDER_STATUS_INVALID);
+            }
+            throw new BizException(ErrorCode.ORDER_EXPIRED);
+        }
+
+        log.info("支付成功 | orderNo={} userId={} amount={}", orderNo, userId, order.getAmount());
+
+        OrderPayVO vo = new OrderPayVO();
+        vo.setOrderNo(orderNo);
+        vo.setStatus(Const.STATUS_PAID);
+        vo.setAmount(order.getAmount());
+        vo.setPayTime(payTime);
+        return vo;
     }
 
     /** 扫描超时未支付订单：逐条 CAS 抢占后回补库存，返回成功关闭的笔数 */

@@ -23,6 +23,7 @@ public enum ErrorCode {
     // ===== 订单 4xxxx =====
     ORDER_NOT_FOUND(40009, "订单不存在"),
     ORDER_STATUS_INVALID(40010, "订单状态不允许该操作"),
+    ORDER_EXPIRED(40011, "订单已超时，请重新下单"),
 
     // ===== 服务端 5xxxx =====
     SYSTEM_ERROR(50001, "系统繁忙，请稍后重试"),
