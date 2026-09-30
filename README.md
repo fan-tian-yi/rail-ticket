@@ -21,6 +21,7 @@
 | **订单快照** | `t_order` 冗余存出发/到达站与票价，外部表变更不污染历史订单 | ✅ |
 | **参数校验分层** | 格式取值（DTO 注解）→ 类型（强类型 + 枚举）→ 业务（Service 手写 + 静态校验类），信任边界收敛在 Controller 入口 | ✅ |
 | **支付（模拟）** | 一条 CAS 同时卡两个条件：`status=0` 防重复支付、`expire_time > 支付时间` 防超时支付。两者的条件互斥，所以同一张订单不可能既被支付又被关单 —— 扫描任务只是清理工，不是裁判 | ✅ |
+| **会话认证** | Sa-Token 的 token 模式：token 只是一串随机串，真正的会话在 Redis（`satoken:login:token:{token}` → `loginId`）。选它而非 JWT，是因为退票/封号/踢人要求**立即失效**，JWT 要撤销就得再维护一份 Redis 黑名单——状态一点没省掉，反而白背一套签名与刷新逻辑 | ✅ |
 | **对账** | `t_stock_deduction_log` 流水 + 定时任务比对 Redis 库存 vs MySQL 订单，漂移自动修正 | ⏳ |
 | **MySQL 主从 / Redis 哨兵** | 主写从读 + 自动故障转移 | ⏳ |
 
@@ -28,11 +29,11 @@
 
 ## 🛠 技术栈
 
-**后端**：Spring Boot 3.5.14 / JDK 21 / MyBatis-Plus 3.5.7 / Flyway / springdoc-openapi
+**后端**：Spring Boot 3.5.14 / JDK 21 / MyBatis-Plus 3.5.7 / Flyway / springdoc-openapi / Sa-Token 1.44（认证）
 
-**存储**：MySQL 8 / Redis 7
+**存储**：MySQL 8（订单与流水）/ Redis 7（库存 + 会话）
 
-**规划中**：Sa-Token（认证）、Sentinel（限流）、Caffeine（本地缓存）、Redisson
+**规划中**：Sentinel（限流）、Caffeine（本地缓存）、Redisson
 
 **前端**：Vue 3 + Vite（车次查询 / 三步下单页 / 支付 / 我的订单 / 退票，独立仓库 `rail-ticket-ui`）
 > 下单走**独立页面分三步**（填写信息 → 确认支付 → 支付完成），带 15 分钟支付倒计时；不引 vue-router，三个页面用 20 行 hash 路由搞定。
@@ -68,6 +69,7 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 
 - **Swagger UI**：`http://localhost:8080/swagger-ui.html` —— 可直接调接口
 - 库存预热在启动时自动执行，覆盖未来 7 天（窗口由 `Const.PRESALE_DAYS` 控制）
+- **测试账号**：`13800000001 / 123456`（用户 A，主测试号）、`13800000002 / 123456`（用户 B，用于验证越权拦截）
 
 > ⚠️ Windows 的 **Git Bash（MSYS）下 `./mvnw` 会失败**（路径自动转换导致 `ClassNotFoundException: classworlds.launcher.Launcher`），请改用 PowerShell/cmd 里的 `mvnw.cmd`。
 
@@ -77,6 +79,9 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| POST | `/api/auth/login` | 登录（手机号 + 密码，BCrypt 校验，签发 token） |
+| POST | `/api/auth/logout` | 登出（当前 token 立即失效） |
+| GET | `/api/auth/me` | 当前登录用户 |
 | GET | `/api/trains` | 车次查询（三档票价按里程现算 + 上架过滤） |
 | GET | `/api/inventory/available` | 区间余票（取覆盖区间的 seg 计数器最小值） |
 | POST | `/api/orders` | 下单（Lua 原子扣减 → 落库 → 失败回补） |
@@ -84,6 +89,8 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 | POST | `/api/orders/refund` | 退票（待支付→已取消，已支付→已退票） |
 | POST | `/api/orders/close-timeout` | 手动触发超时关单（运维用，正常由定时任务执行） |
 | POST | `/api/inventory/warm-up` | 手动预热库存（运维用） |
+
+**认证方式**：除 `/api/auth/login`、`/api/trains`、`/api/inventory/available` 外，所有接口都要求登录，请求头带 `Authorization: Bearer <token>`（token 来自登录接口返回值）。未登录或 token 失效返回 `code=40101`，登录失败返回 `code=40100`。
 
 统一响应体 `{ code, message, data }`：HTTP 恒为 200，`code=0` 为成功，非 0 时 `message` 是可直接展示给用户的中文提示。
 
@@ -98,7 +105,7 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 | `t_station` | 站点（含电报码、经纬度） |
 | `t_train` | 车次模板（无发车日期，每日复用时刻表） |
 | `t_train_station` | 车次经停（时刻表 + 累计里程 `distance_cum`）★核心表 |
-| `t_user` | 用户（手机号登录） |
+| `t_user` | 用户（手机号登录 + BCrypt 密码密文） |
 | `t_passenger` | 乘客（一人多张身份证） |
 | `t_order` | 订单（订单快照冻结业务事实 + `expire_time` 支撑超时关单） |
 | `t_stock_deduction_log` | 库存流水（`delta` 正负成对，退票/关单的回补依据 + 对账依据） |
@@ -118,8 +125,8 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
   - ✅ 退票（状态流转 + CAS 防重复退票 + 从扣减流水回补）
   - ✅ 支付（模拟渠道，CAS 防重复支付 + 防超时支付）
   - ✅ 超时未支付自动关单（每分钟扫描 + CAS 抢占 + 回补库存）
+  - ✅ 登录（Sa-Token，会话存 Redis，token 走 `Authorization` 头；下单/退票/支付的 userId 全部改为从会话取）
   - ✅ 前端（车次查询 / 三步下单页 / 支付 / 我的订单 / 退票）
-  - ⏳ 登录（当前为固定测试用户，待接 Sa-Token）
 - **Phase 3** 高并发武器 ★：Sentinel 限流 + Caffeine 降级 + 压测报告
 - **Phase 4** 容灾运维：Redis 哨兵 + MySQL 主从 + 对账 + 云服务器部署
 - **Phase 5** 加分项：中转寻路、模拟地图、分库分表、RocketMQ、AI
@@ -139,6 +146,8 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 8. **状态流转一律用 CAS，不用「先查再改」** — `UPDATE ... WHERE status = 期望值` 把检查和写入压进同一条 SQL。若写成"先 SELECT 判断、再 UPDATE"，两个并发请求都会在对方写入前通过检查，导致库存被回补两次。CAS 还顺带免疫多实例部署
 9. **定时任务不承担正确性** — 超时关单靠扫描，但「支付」会自己再判一次 `expire_time`。因为扫描有延迟窗口（15:00 到期、最晚 16:00 才被关），只信 `status` 就会放过已过期的支付。正确性由 SQL 的条件互斥保证，不依赖后台任务的及时性
 10. **回补区间从流水读，不从车站 ID 反推** — 订单只存 `from/to_station_id`，而回补要的是 seg 序号。若重新解析，经停表一旦增删站，同一车站 ID 会翻出不同序号，票就还到了错误的区间且**永久错乱**（日志和状态全都正常，只有 Redis 慢慢失真）
+11. **认证选 Sa-Token 的 token 模式，不用 JWT、不用 Cookie** — JWT 用无状态换水平扩展，代价是签发后到过期前不可撤销；而退票、封号、强制下线都要求立即生效，要撤销就得引 Redis 黑名单，等于状态没省掉还多背一套签名与刷新逻辑。Sa-Token 的 token 是不透明随机串、会话在 Redis，天然支持踢人与自动续期。凭证走 `Authorization` 头而非 Cookie，避开前后端分离下的跨域配置与 CSRF
+12. **会话里只存 loginId，不存用户资料** — 塞进会话的数据会陈旧（改了昵称、封了号都不更新），得在每个改动点记得同步。只放不变的标识 `userId`，其余按需查库
 
 ---
 
