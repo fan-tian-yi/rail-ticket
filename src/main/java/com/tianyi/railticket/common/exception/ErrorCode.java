@@ -25,6 +25,10 @@ public enum ErrorCode {
     ORDER_STATUS_INVALID(40010, "订单状态不允许该操作"),
     ORDER_EXPIRED(40011, "订单已超时，请重新下单"),
 
+    // ===== 认证 401xx =====
+    LOGIN_FAILED(40100, "手机号或密码错误"),
+    NOT_LOGIN(40101, "登录已失效，请重新登录"),
+
     // ===== 服务端 5xxxx =====
     SYSTEM_ERROR(50001, "系统繁忙，请稍后重试"),
     ;

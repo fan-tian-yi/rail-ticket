@@ -1,5 +1,6 @@
 package com.tianyi.railticket.service;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -45,9 +46,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OrderService {
 
-    /** MVP 固定测试用户，Step4 接 Sa-Token 后改从会话取 */
-    private static final Long CURRENT_USER_ID = 3001L;
-
     private static final DateTimeFormatter ORDER_NO_DATE_FMT = DateTimeFormatter.BASIC_ISO_DATE;
 
     /** 流水里的 seg 列表类型：下单写入、退票/超时关单/对账读出回补，提成常量避免每处都写 TypeReference */
@@ -64,7 +62,7 @@ public class OrderService {
     /** 下单主流程：校验 → 解析区间 → 算价 → 扣库存 → 落库 */
     @Transactional(rollbackFor = Exception.class)
     public OrderCreateVO create(OrderCreateDTO dto) {
-        Long userId = CURRENT_USER_ID;
+        Long userId = StpUtil.getLoginIdAsLong();
 
         // ① 业务校验：乘车日期 / 预售期 / 车次可售 / 乘客归属
         //    参数非空、ID 正数、席别合法已由 OrderCreateDTO 的注解在 Controller 入口拦掉
@@ -126,7 +124,7 @@ public class OrderService {
     /** 退票：CAS 抢订单所有权 → 从扣减流水还原区间 → 回补库存 → 记退票流水 */
     @Transactional(rollbackFor = Exception.class)
     public void refund(OrderRefundDTO dto) {
-        Long userId = CURRENT_USER_ID;
+        Long userId = StpUtil.getLoginIdAsLong();
         String orderNo = dto.getOrderNo();
 
         // ① 查订单 + 归属校验：不是本人的单查出来就是 null，统一报"不存在"以免泄露订单号是否有效
@@ -176,7 +174,7 @@ public class OrderService {
 
     /** 支付订单：CAS 抢订单所有权，仅待支付且未超时的单能付成功 */
     public OrderPayVO pay(OrderPayDTO dto) {
-        Long userId = CURRENT_USER_ID;
+        Long userId = StpUtil.getLoginIdAsLong();
         String orderNo = dto.getOrderNo();
 
         // ① 查订单 + 归属校验：条件里带上 userId，非本人的单查出来就是 null，统一报"不存在"以免泄露订单号是否有效

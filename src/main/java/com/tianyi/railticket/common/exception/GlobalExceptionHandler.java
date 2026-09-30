@@ -1,5 +1,6 @@
 package com.tianyi.railticket.common.exception;
 
+import cn.dev33.satoken.exception.NotLoginException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.tianyi.railticket.common.Result;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +47,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public Result<Void> handle404(NoResourceFoundException e) {
         return Result.fail(404, "接口不存在: " + e.getResourcePath());
+    }
+
+    /** 未登录 / token 失效（Sa-Token 拦截器与 StpUtil 抛） */
+    @ExceptionHandler(NotLoginException.class)
+    public Result<Void> handleNotLogin(NotLoginException e) {
+        log.warn("未登录访问 | type={}", e.getType());
+        return Result.fail(ErrorCode.NOT_LOGIN.getCode(), ErrorCode.NOT_LOGIN.getMessage());
     }
 
     /** 兜底 */
