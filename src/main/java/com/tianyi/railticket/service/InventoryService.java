@@ -149,11 +149,21 @@ public class InventoryService {
         return Long.valueOf(1L).equals(result);
     }
 
-    /** 回补区间库存（每 seg +1） */
+    /** 回补 Lua：逐段 INCRBY（无条件 +1，没有检查步骤，故不需要两段式） */
+    private static final DefaultRedisScript<Long> RESTORE_SCRIPT = new DefaultRedisScript<>("""
+            for i = 1, #KEYS do
+                redis.call('INCRBY', KEYS[i], ARGV[1])
+            end
+            return 1
+            """, Long.class);
+
+    /** 回补区间库存（每 seg +1）：一条 Lua 完成，1 次往返且不会出现部分回补 */
     public void restore(Long trainId, LocalDate date, Integer seatType, int fromSeq, int toSeq) {
-        for (String key : segKeys(trainId, date, seatType, fromSeq, toSeq)) {
-            stringRedisTemplate.opsForValue().increment(key, 1);
+        List<String> keys = segKeys(trainId, date, seatType, fromSeq, toSeq);
+        if (keys.isEmpty()) {
+            return;
         }
+        stringRedisTemplate.execute(RESTORE_SCRIPT, keys, "1");
     }
 
     /** 查区间最小余票（任一 key 缺失按 0 处理） */
