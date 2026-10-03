@@ -19,6 +19,7 @@ public enum ErrorCode {
     TRAIN_NOT_FOUND(40006, "车次不存在或已停运"),
     SEAT_TYPE_INVALID(40007, "席别不存在"),
     BEYOND_PRESALE(40008, "超出预售期"),
+    TRAIN_SELL_CLOSED(40012, "车次已停止售票"),
 
     // ===== 订单 4xxxx =====
     ORDER_NOT_FOUND(40009, "订单不存在"),

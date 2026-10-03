@@ -19,6 +19,9 @@ public final class Const {
     /** 支付超时分钟数：下单后超过该时间未支付则自动关单并回补库存 */
     public static final int PAY_TIMEOUT_MINUTES = 15;
 
+    /** 停止售票窗口：距发车不足该分钟数即停售（对标 12306；含已发车）。查询过滤与下单校验共用 */
+    public static final int STOP_SELL_BEFORE_MINUTES = 30;
+
     // ===== 车次状态（t_train.status）=====
     /** 只有上架车次才预热库存、才可查可下单 */
     public static final int TRAIN_STATUS_DRAFT = 0;

@@ -1,6 +1,7 @@
 package com.tianyi.railticket.service;
 
 import com.tianyi.railticket.common.Check;
+import com.tianyi.railticket.common.Const;
 import com.tianyi.railticket.common.PriceCalculator;
 import com.tianyi.railticket.common.SeatType;
 import com.tianyi.railticket.dto.TrainQueryDTO;
@@ -17,6 +18,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -60,8 +63,30 @@ public class TrainQueryService {
             vo.setTrainType(train.getTrainType());
             vo.setFromStationName(from.getName());
             vo.setToStationName(to.getName());
-            vo.setDepartTime(date.atTime(r.getDepart()));   // TODO: 跨日车次到达日期 +1
-            vo.setArriveTime(date.atTime(r.getArrive()));
+            // 缺发车时刻会让 atTime NPE，跳过并告警
+            LocalTime departTime = r.getDepart();
+            if (departTime == null) {
+                log.warn("车次 {} 缺少发车时刻，跳过该车次 | trainId={}", train.getTrainNo(), train.getId());
+                continue;
+            }
+            LocalDateTime departDateTime = date.atTime(departTime);
+
+            // 已过停止售票窗口（发车前 N 分钟停售）的车次不再对外售卖
+            if (!departDateTime.isAfter(LocalDateTime.now(Const.ZONE)
+                    .plusMinutes(Const.STOP_SELL_BEFORE_MINUTES))) {
+                log.debug("车次 {} 已过停止售票时间，跳过 | depart={}", train.getTrainNo(), departDateTime);
+                continue;
+            }
+
+            // 跨日车次：到达时刻不晚于发车时刻说明跨了一天，到达日期 +1
+            LocalTime arriveTime = r.getArrive();
+            LocalDateTime arriveDateTime = arriveTime == null ? null : date.atTime(arriveTime);
+            if (arriveDateTime != null && arriveDateTime.isBefore(departDateTime)) {
+                arriveDateTime = arriveDateTime.plusDays(1);
+            }
+
+            vo.setDepartTime(departDateTime);
+            vo.setArriveTime(arriveDateTime);
 
             // 三档席别票价都由「本次行程里程」现算，服务端不存价格
             BigDecimal base = PriceCalculator.basePrice(r.getDistance());

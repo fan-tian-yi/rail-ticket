@@ -74,10 +74,13 @@ public class OrderService {
         // ② 区间解析：一次 SQL 同时拿到 seg 区间、区间里程、时刻
         SegmentInfo seg = resolveSegment(dto.getTrainId(), dto.getFromStationId(), dto.getToStationId());
 
-        // ③ 算价：按区间里程算二等座基准价（递远递减），再乘席别系数
+        // ③ 停止售票：查询层已过滤，这层兜住绕过前端直接调接口买已停售车次
+        Check.trainDepart(dto.getTrainDate(), seg.getDepart());
+
+        // ④ 算价：按区间里程算二等座基准价（递远递减），再乘席别系数
         BigDecimal amount = seatType.calc(PriceCalculator.basePrice(seg.getDistance()));
 
-        // ④ 扣库存：Lua 两段式保证原子性，失败时不会部分扣减
+        // ⑤ 扣库存：Lua 两段式保证原子性，失败时不会部分扣减
         boolean deducted = inventoryService.deduct(dto.getTrainId(),
                 dto.getTrainDate(), seatType.getCode(),
                 seg.getFromSeq(), seg.getToSeq());
@@ -85,7 +88,7 @@ public class OrderService {
             throw new BizException(ErrorCode.NO_TICKET);
         }
 
-        // ⑤ 落库：失败必须回补 Redis 后再抛出，否则事务回滚了但库存没还
+        // ⑥ 落库：失败必须回补 Redis 后再抛出，否则事务回滚了但库存没还
         String orderNo = generateOrderNo(dto.getTrainDate());
         LocalDateTime expireTime = LocalDateTime.now(Const.ZONE)
                 .plusMinutes(Const.PAY_TIMEOUT_MINUTES);

@@ -4,6 +4,8 @@ import com.tianyi.railticket.common.exception.BizException;
 import com.tianyi.railticket.common.exception.ErrorCode;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 /** 业务规则校验（L3）：DTO 注解表达不了、依赖"当前状态"的规则集中在这里 */
 public final class Check {
@@ -19,6 +21,17 @@ public final class Check {
         }
         if (trainDate.isAfter(today.plusDays(Const.PRESALE_DAYS - 1))) {
             throw new BizException(ErrorCode.BEYOND_PRESALE);
+        }
+    }
+
+    /** 停止售票窗口：距发车不足 STOP_SELL_BEFORE_MINUTES 分钟（含已发车）→ 40012；缺时刻则放行，交给数据校验 */
+    public static void trainDepart(LocalDate trainDate, LocalTime departTime) {
+        if (departTime == null) {
+            return;
+        }
+        LocalDateTime depart = trainDate.atTime(departTime);
+        if (!depart.isAfter(LocalDateTime.now(Const.ZONE).plusMinutes(Const.STOP_SELL_BEFORE_MINUTES))) {
+            throw new BizException(ErrorCode.TRAIN_SELL_CLOSED);
         }
     }
 
