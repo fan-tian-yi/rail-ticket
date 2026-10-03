@@ -166,7 +166,7 @@ public class InventoryService {
         stringRedisTemplate.execute(RESTORE_SCRIPT, keys, "1");
     }
 
-    /** 查区间最小余票（任一 key 缺失按 0 处理） */
+    /** 查区间最小余票（一次 MGET 取回全部 seg；任一 key 缺失按 0 处理） */
     public int getAvailable(Long trainId, LocalDate date, Integer seatType, int fromSeq, int toSeq) {
         Check.trainDate(date);
         checkTrainOnline(trainId);
@@ -175,11 +175,18 @@ public class InventoryService {
         if (keys.isEmpty()) {
             return 0;
         }
+
+        // 1. 一次 MGET 取回所有 seg 的值（顺序与 keys 一一对应，缺失的 key 是 null 占位）
+        List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
+        if (values == null) {
+            return 0;
+        }
+
+        // 2. 逐段比大小
         int min = Integer.MAX_VALUE;
-        for (String key : keys) {
-            String value = stringRedisTemplate.opsForValue().get(key);
+        for (String value : values) {
             if (value == null) {
-                log.debug("库存 key 缺失，按无票处理 | key={}", key);
+                log.debug("库存 key 缺失，按无票处理 | keys={}", keys);
                 return 0;
             }
             min = Math.min(min, Integer.parseInt(value));
