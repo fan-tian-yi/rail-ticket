@@ -27,6 +27,12 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
+logging:
+  level:
+    com.tianyi.railticket: INFO
+    # 打印 Mapper 执行的 SQL，排查问题时用；不需要时调成 INFO
+    com.tianyi.railticket.mapper: DEBUG
+
 sa-token:
   # 请求头名：前端带 Authorization: Bearer <token>
   token-name: Authorization
@@ -34,11 +40,11 @@ sa-token:
   # 前后端分离必须关掉从 Cookie/请求体读 token（默认均为 true）
   is-read-cookie: false
   is-read-body: false
-  # 绝对有效期 30 天；空闲有效期 30 分钟（两者取先到者）
-  timeout: 2592000
+  # 绝对有效期 7 天；空闲有效期 30 分钟（两者取先到者，哪个先到按哪个失效）
+  timeout: 604800
   active-timeout: 1800
   # 允许同账号多端登录，各端 token 独立（踢人才能精确到设备）
   is-concurrent: true
   is-share: false
-  # 开发期保留操作日志，上线关闭
-  is-log: true
+  # 关闭 Sa-Token 操作日志（默认 logLevel=trace，每个请求都打，压测时是次要瓶颈）
+  is-log: false
