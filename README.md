@@ -1,6 +1,6 @@
 # 🚄 rail-ticket
 
-> 高并发火车票购票系统 · 简历项目
+> 高并发火车票购票系统
 
 **Spring Boot 3 + MyBatis-Plus + Redis 高并发 + Flyway 版本化 + 区段共享余票模型**
 
@@ -35,10 +35,7 @@
 
 **规划中**：Sentinel（限流）、Caffeine（本地缓存）、Redisson
 
-**前端**：Vue 3 + Vite（车次查询 / 三步下单页 / 支付 / 我的订单 / 退票）
-> 前端是配套的本地项目，**本仓库只收录后端**。
-> 下单走**独立页面分三步**（填写信息 → 确认支付 → 支付完成），带 15 分钟支付倒计时；不引 vue-router，三个页面用 20 行 hash 路由搞定。
-> 没有引入 Element Plus —— 这是定制化 C 端界面，手写了一套基于 CSS 变量的设计系统；Element Plus 的强项是表单密集的后台系统。
+**前端**：Vue 3 + Vite（配套的本地项目，本仓库只收录后端）
 
 ---
 
@@ -73,8 +70,6 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 - **测试账号**：`13800000001 / 123456`（用户 A，主测试号）、`13800000002 / 123456`（用户 B，用于验证越权拦截）
 
 > 仓库内的车站、车次、票价、用户、乘客**全部是虚构的种子数据**；票价模型虽由 12306 公开票价拟合而来，但样本与真实产品无关。测试账号仅供本地演示。
-
-> ⚠️ Windows 的 **Git Bash（MSYS）下 `./mvnw` 会失败**（路径自动转换导致 `ClassNotFoundException: classworlds.launcher.Launcher`），请改用 PowerShell/cmd 里的 `mvnw.cmd`。
 
 ---
 
@@ -167,8 +162,6 @@ cp src/main/resources/application.yml.example src/main/resources/application.yml
 | **下单前端** | 列表页弹窗直接下单 | 跳独立页面分三步（填写 → 确认支付 → 完成） | 弹窗放不下「15 分钟倒计时 + 支付方式 + 订单号」，误关就丢了未付款订单并白占库存。改独立页面后，未付款的订单**能续上**而不是重复下单 |
 | **认证** | Service 里硬编码 `CURRENT_USER_ID = 3001L` | Sa-Token 会话，`userId` 从会话取 | 硬编码等于"不管谁登录，订单都记在 3001 名下" —— 登录白做。这一步也是这个项目从 Demo 变成系统的分界 |
 | **席别配置解析** | `catch (Exception e)` 一网打尽 | 前置判空 + 只 catch `JsonProcessingException` | 原来会把 NPE 这类**真实 bug 也伪装成"这个车次配置有问题"**，日志里一堆 error 却查不出根因 |
-
-> 面试常见问题「如果重来一次你会改什么」，**这张表就是答案的一部分**：它记录了我当时为什么那么做、以及后来为什么改。
 
 ---
 
