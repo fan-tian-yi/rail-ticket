@@ -32,14 +32,14 @@ public class GlobalExceptionHandler {
         String msg = err.getCode() != null && err.getCode().startsWith("typeMismatch")
                 ? "参数格式不正确"
                 : err.getDefaultMessage();
-        log.warn("参数校验失败: {}", msg);
+        log.info("参数校验失败: {}", msg);
         return Result.fail(ErrorCode.PARAM_ERROR.getCode(), msg);
     }
 
     /** 请求体解析失败（POST @RequestBody，Jackson 抛） */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public Result<Void> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
-        log.warn("请求体解析失败: {}", e.getMessage());
+        log.info("请求体解析失败: {}", e.getMessage());
         return Result.fail(ErrorCode.PARAM_ERROR.getCode(), resolveBodyError(e));
     }
 
@@ -52,7 +52,7 @@ public class GlobalExceptionHandler {
     /** 未登录 / token 失效（Sa-Token 拦截器与 StpUtil 抛） */
     @ExceptionHandler(NotLoginException.class)
     public Result<Void> handleNotLogin(NotLoginException e) {
-        log.warn("未登录访问 | type={}", e.getType());
+        log.info("未登录访问 | type={}", e.getType());
         return Result.fail(ErrorCode.NOT_LOGIN.getCode(), ErrorCode.NOT_LOGIN.getMessage());
     }
 

@@ -28,6 +28,17 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 logging:
+  file:
+    # 日志文件路径。建议放项目外，所有项目共用一个日志根目录、按项目名分子目录，方便集中排查。
+    # 默认写到项目下的 logs/；也可以由启动环境变量覆盖：LOGGING_FILE_NAME=/var/log/rail-ticket/app.log
+    name: ${LOG_DIR:logs}/rail-ticket.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB      # 单文件超 10MB 切分
+      max-history: 7           # 历史文件保留 7 天
+      total-size-cap: 500MB    # 历史文件总大小上限，防止日志把磁盘写满
+      # 历史文件命名：默认是 .gz 压缩包，改成明文 .log 才能直接用文本工具 / 日志查看器打开
+      file-name-pattern: ${LOG_DIR:logs}/rail-ticket.%d{yyyy-MM-dd}.%i.log
   level:
     com.tianyi.railticket: INFO
     # 打印 Mapper 执行的 SQL，排查问题时用；不需要时调成 INFO
