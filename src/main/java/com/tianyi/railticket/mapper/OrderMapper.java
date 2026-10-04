@@ -32,7 +32,10 @@ public interface OrderMapper extends BaseMapper<OrderDO> {
             """)
     int casPay(@Param("orderNo") String orderNo, @Param("payTime") LocalDateTime payTime);
 
-    /** 查已到期但仍待支付的订单（走 idx_order_status_expire）；一次取全关单所需字段，免去逐单再查 */
+    /**
+     * 查「已到期且过了宽限期」仍待支付的订单（now 传的是 expire_time + 宽限 的时间点）。
+     * 走 idx_order_status_expire；一次取全关单所需字段，免去逐单再查。
+     */
     @Select("""
             SELECT id, order_no, train_id, train_date, seat_type
             FROM t_order

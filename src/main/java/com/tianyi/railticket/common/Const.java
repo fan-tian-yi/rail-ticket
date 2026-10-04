@@ -16,8 +16,11 @@ public final class Const {
     /** 预售期天数：与库存预热天数保持一致，超出则 Redis 里没有 key（会假性显示无票） */
     public static final int PRESALE_DAYS = 7;
 
-    /** 支付超时分钟数：下单后超过该时间未支付则自动关单并回补库存 */
+    /** 支付超时分钟数：用户可见的支付窗口（软时间线），写进 t_order.expire_time，支付时用它判超时 */
     public static final int PAY_TIMEOUT_MINUTES = 15;
+
+    /** 关单宽限分钟数：到期后再等这么久才关单回补（硬时间线），用来吸收支付回调延迟；只放宽关单，不放宽支付 */
+    public static final int CLOSE_GRACE_MINUTES = 5;
 
     /** 停止售票窗口：距发车不足该分钟数即停售（对标 12306；含已发车）。查询过滤与下单校验共用 */
     public static final int STOP_SELL_BEFORE_MINUTES = 30;

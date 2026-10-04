@@ -219,7 +219,10 @@ public class OrderService {
 
     /** 扫描超时未支付订单：逐条 CAS 抢占后回补库存，返回成功关闭的笔数 */
     public int closeTimeoutOrders(int limit) {
-        List<OrderDO> timeoutOrders = orderMapper.selectTimeoutOrders(LocalDateTime.now(Const.ZONE), limit);
+        // 用「到期 + 宽限」的硬时间线扫：宽限期内不关单、不还库存，给支付回调留出到达时间
+        LocalDateTime closeDeadline = LocalDateTime.now(Const.ZONE)
+                .minusMinutes(Const.CLOSE_GRACE_MINUTES);
+        List<OrderDO> timeoutOrders = orderMapper.selectTimeoutOrders(closeDeadline, limit);
         if (timeoutOrders.isEmpty()) {
             return 0;
         }
